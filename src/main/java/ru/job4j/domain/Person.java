@@ -14,6 +14,13 @@ public class Person {
     private String username;
     private String password;
 
+    public static Person of(String username, String password) {
+        Person person = new Person();
+        person.username = username;
+        person.password = password;
+        return person;
+    }
+
     public int getId() {
         return id;
     }
