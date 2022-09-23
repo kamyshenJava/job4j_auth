@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/person")
@@ -38,7 +39,7 @@ public class PersonController {
     public ResponseEntity<Person> findById(@PathVariable int id) {
         var person = this.personService.findById(id);
         if (person.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "The person with this id has not been found.");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "A person with this id has not been found.");
         }
         return new ResponseEntity<>(
                 person.get(), HttpStatus.OK);
@@ -76,6 +77,38 @@ public class PersonController {
         person.setId(id);
         this.personService.delete(person);
         return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/")
+    public ResponseEntity<Person> patch(@RequestBody Map<String, String> body) {
+        String id = body.get("id");
+        if (id == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "You need to provide a valid id.");
+        }
+        Optional<Person> person = personService.findById(Integer.parseInt(id));
+        if (person.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "A person with this id has not been found.");
+        }
+        Person rsl = person.get();
+        if (body.containsKey("username")) {
+            String username = body.get("username");
+            if ("".equals(username)) {
+                throw new NullPointerException();
+            }
+            rsl.setUsername(username);
+        }
+        if (body.containsKey("password")) {
+            String password = body.get("password");
+            if ("".equals(password)) {
+                throw new NullPointerException();
+            }
+            if (password.length() < 6) {
+                throw new IllegalArgumentException("Invalid password. It must be longer than 5 characters.");
+            }
+            rsl.setPassword(password);
+        }
+        personService.save(rsl);
+        return ResponseEntity.ok(rsl);
     }
 
     @ExceptionHandler(value = { IllegalArgumentException.class })
