@@ -1,19 +1,15 @@
 package ru.job4j.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import ru.job4j.domain.Person;
+import ru.job4j.service.Operation;
 import ru.job4j.service.PersonService;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
-import java.util.HashMap;
+import javax.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,13 +17,10 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/person")
 public class PersonController {
-    private static final Logger LOGGER = LoggerFactory.getLogger(PersonController.class.getSimpleName());
     private final PersonService personService;
-    private final ObjectMapper objectMapper;
 
-    public PersonController(final PersonService personService, ObjectMapper objectMapper) {
+    public PersonController(final PersonService personService) {
         this.personService = personService;
-        this.objectMapper = objectMapper;
     }
 
     @GetMapping("/")
@@ -36,26 +29,18 @@ public class PersonController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Person> findById(@PathVariable int id) {
-        var person = this.personService.findById(id);
-        if (person.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "A person with this id has not been found.");
-        }
+    public ResponseEntity<Person> findById(@PathVariable @Valid int id) {
+        Optional<Person> person = personService.findById(id);
+        checkIfPersonFound(person);
         return new ResponseEntity<>(
                 person.get(), HttpStatus.OK);
     }
 
     @PostMapping("/")
-    public ResponseEntity<Person> create(@RequestBody Map<String, String> body) {
-        String username = body.get("username");
-        String password = body.get("password");
-        if ("".equals(username) || "".equals(password)) {
-            throw new NullPointerException();
-        }
-        if (password.length() < 6) {
-            throw new IllegalArgumentException("Invalid password. It must be longer than 5 characters.");
-        }
-        Person person = Person.of(username, password);
+    @Validated(Operation.OnCreate.class)
+    public ResponseEntity<Person> create(@RequestBody Person person) {
+        String password = person.getPassword();
+        checkPasswordLength(password);
         return new ResponseEntity<>(
                 personService.save(person),
                 HttpStatus.CREATED
@@ -63,16 +48,20 @@ public class PersonController {
     }
 
     @PutMapping("/")
-    public ResponseEntity<Void> update(@RequestBody Person person) {
-        if (person == null) {
-            throw new NullPointerException();
-        }
+    public ResponseEntity<Void> update(@RequestBody @Valid Person person) {
+        int id = person.getId();
+        Optional<Person> personFound = personService.findById(id);
+        checkIfPersonFound(personFound);
+        String password = person.getPassword();
+        checkPasswordLength(password);
         personService.save(person);
         return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable int id) {
+    public ResponseEntity<Void> delete(@PathVariable @Valid int id) {
+        Optional<Person> personFound = personService.findById(id);
+        checkIfPersonFound(personFound);
         Person person = new Person();
         person.setId(id);
         this.personService.delete(person);
@@ -80,46 +69,33 @@ public class PersonController {
     }
 
     @PatchMapping("/")
-    public ResponseEntity<Person> patch(@RequestBody Map<String, String> body) {
+    public ResponseEntity<Person> patch(@RequestBody @Valid Map<String, String> body) {
         String id = body.get("id");
-        if (id == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "You need to provide a valid id.");
-        }
         Optional<Person> person = personService.findById(Integer.parseInt(id));
-        if (person.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "A person with this id has not been found.");
-        }
+        checkIfPersonFound(person);
         Person rsl = person.get();
         if (body.containsKey("username")) {
-            String username = body.get("username");
-            if ("".equals(username)) {
-                throw new NullPointerException();
-            }
-            rsl.setUsername(username);
+            rsl.setUsername(body.get("username"));
         }
         if (body.containsKey("password")) {
             String password = body.get("password");
-            if ("".equals(password)) {
-                throw new NullPointerException();
-            }
-            if (password.length() < 6) {
-                throw new IllegalArgumentException("Invalid password. It must be longer than 5 characters.");
-            }
+            checkPasswordLength(password);
             rsl.setPassword(password);
         }
         personService.save(rsl);
         return ResponseEntity.ok(rsl);
     }
 
-    @ExceptionHandler(value = { IllegalArgumentException.class })
-    public void exceptionHandler(Exception e, HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
-        response.setStatus(HttpStatus.BAD_REQUEST.value());
-        response.setContentType("application/json");
-        response.getWriter().write(objectMapper.writeValueAsString(new HashMap<>() {{
-            put("message", e.getMessage());
-            put("type", e.getClass());
-        }}));
-        LOGGER.error(e.getLocalizedMessage());
+    private void checkPasswordLength(String password) {
+        if (password.length() < 6 || password.length() > 20) {
+            throw new IllegalArgumentException("Password length should be between 6 and 20 characters.");
+        }
     }
+
+    private void checkIfPersonFound(Optional<Person> person) {
+        if (person.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "A person with this id has not been found.");
+        }
+    }
+
 }
